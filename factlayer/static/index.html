@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>factlayer</title>
+<style>
+  :root {
+    --bg: #fbfbfa; --panel: #ffffff; --ink: #1a1a19; --muted: #6b6b68;
+    --line: #e4e4e1; --accent: #3b5bdb;
+    --corroborates: #2f9e44; --contradicts: #d63939; --reconciled: #1c7ed6;
+    --supersedes: #7048e8; --related: #868e96; --undetermined: #868e96;
+    --chip-bg: #f1f3f5;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16161a; --panel: #1e1e23; --ink: #e8e8e6; --muted: #9a9a96;
+      --line: #2e2e35; --accent: #748ffc; --chip-bg: #26262d;
+      --corroborates: #51cf66; --contradicts: #ff6b6b; --reconciled: #4dabf7;
+      --supersedes: #b197fc;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  }
+  header {
+    padding: 20px 28px; border-bottom: 1px solid var(--line);
+    background: var(--panel); position: sticky; top: 0; z-index: 10;
+  }
+  h1 { margin: 0; font-size: 19px; letter-spacing: -0.01em; }
+  h1 span { color: var(--muted); font-weight: 400; font-size: 14px; margin-left: 10px; }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  .stats { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 12px; font-size: 13px; color: var(--muted); }
+  .stats b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  .bar { display: flex; gap: 10px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+  button, label.file {
+    font: inherit; font-size: 13px; padding: 7px 14px; border-radius: 7px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer;
+  }
+  button:hover, label.file:hover { border-color: var(--accent); color: var(--accent); }
+  button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  input[type=file] { display: none; }
+  input[type=search] {
+    font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 7px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink); min-width: 240px;
+  }
+  #status { font-size: 13px; color: var(--muted); }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 28px 80px; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
+  .tabs button { border: none; background: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 9px 14px; }
+  .tabs button.on { background: none; color: var(--accent); border-bottom-color: var(--accent); }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 15px 17px; margin-bottom: 11px;
+  }
+  .rel { border-left: 3px solid var(--related); }
+  .rel.corroborates { border-left-color: var(--corroborates); }
+  .rel.contradicts  { border-left-color: var(--contradicts); }
+  .rel.reconciled   { border-left-color: var(--reconciled); }
+  .rel.supersedes   { border-left-color: var(--supersedes); }
+
+  .rel-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .verdict { font-weight: 650; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .corroborates .verdict { color: var(--corroborates); }
+  .contradicts  .verdict { color: var(--contradicts); }
+  .reconciled   .verdict { color: var(--reconciled); }
+  .supersedes   .verdict { color: var(--supersedes); }
+  .related .verdict, .undetermined .verdict { color: var(--related); }
+
+  .chip {
+    font-family: var(--mono); font-size: 11px; padding: 2px 7px; border-radius: 5px;
+    background: var(--chip-bg); color: var(--muted);
+  }
+  .explanation { margin: 9px 0 12px; font-size: 14px; }
+  .sides { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+  @media (max-width: 760px) { .sides { grid-template-columns: 1fr; } }
+  .side { border: 1px solid var(--line); border-radius: 8px; padding: 11px 12px; font-size: 13px; }
+  .side .val { font-weight: 650; font-size: 15px; }
+  .side .meta { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  blockquote {
+    margin: 9px 0 0; padding: 8px 10px; border-left: 2px solid var(--line);
+    background: var(--chip-bg); border-radius: 0 6px 6px 0;
+    font-size: 12.5px; color: var(--muted); font-style: italic;
+    max-height: 8.5em; overflow-y: auto;
+  }
+  .src { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 6px; }
+  details.analysis { margin-top: 10px; }
+  details.analysis summary { font-size: 12px; color: var(--muted); cursor: pointer; }
+  pre {
+    font-family: var(--mono); font-size: 11.5px; background: var(--chip-bg);
+    padding: 11px; border-radius: 7px; overflow-x: auto; margin: 8px 0 0;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 550; font-size: 12px; }
+  td.num { font-variant-numeric: tabular-nums; }
+  .empty { color: var(--muted); padding: 40px 0; text-align: center; }
+  .scroll { overflow-x: auto; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>factlayer <span>grounded facts from PDFs, reconciled across documents</span></h1>
+    <div class="stats" id="stats"></div>
+    <div class="bar">
+      <label class="file">upload PDF<input type="file" id="file" accept="application/pdf"></label>
+      <input type="search" id="search" placeholder="filter facts by measure or entity">
+      <button id="refresh">refresh</button>
+      <span id="status"></span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="tabs" id="tabs"></div>
+  <div id="view"></div>
+</main>
+
+<script>
+const VIEWS = [
+  ["relations", "Relationships"],
+  ["facts", "Facts"],
+  ["documents", "Documents"],
+  ["measures", "Schema"],
+  ["failures", "What failed"],
+];
+let current = "relations";
+let relFilter = null;
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const get = (url) => fetch(url).then(r => r.json());
+
+function renderTabs() {
+  $("tabs").innerHTML = VIEWS.map(([k, label]) =>
+    `<button data-view="${k}" class="${k === current ? "on" : ""}">${label}</button>`).join("");
+  $("tabs").querySelectorAll("button").forEach(b =>
+    b.onclick = () => { current = b.dataset.view; relFilter = null; renderTabs(); render(); });
+}
+
+async function loadStats() {
+  const s = await get("/api/stats");
+  const byType = s.relations_by_type || {};
+  $("stats").innerHTML = `
+    <span><b>${s.documents}</b> documents</span>
+    <span><b>${s.facts}</b> facts</span>
+    <span><b>${s.relations}</b> relationships</span>
+    <span style="color:var(--contradicts)"><b>${byType.contradicts || 0}</b> contradictions</span>
+    <span style="color:var(--reconciled)"><b>${byType.reconciled || 0}</b> reconciled</span>
+    <span style="color:var(--corroborates)"><b>${byType.corroborates || 0}</b> corroborations</span>
+    <span><b>${s.failures}</b> failures</span>
+    <span class="chip">${esc(s.backend.provider)} · ${esc(s.backend.extract_model)}</span>`;
+}
+
+function factSide(f, label) {
+  if (!f) return `<div class="side">missing fact</div>`;
+  const p = f.period;
+  const period = p ? (p.label || p.raw) + (p.start ? ` (${p.start} → ${p.end})` : " — unresolved") : "no period";
+  const basis = f.basis && f.basis.length ? ` · ${esc(f.basis.join(", "))}` : "";
+  const est = f.estimate_type && f.estimate_type !== "unknown" ? ` · ${esc(f.estimate_type)}` : "";
+  return `<div class="side">
+    <div class="val">${esc(f.value)}</div>
+    <div class="meta">${esc(f.measure)} — ${esc(f.entity)}</div>
+    <div class="meta">${esc(period)}${basis}${est}</div>
+    <blockquote>${esc(f.evidence.quote)}</blockquote>
+    <div class="src">${esc(f.evidence.locator)} · ${esc(f.doc_id)}</div>
+  </div>`;
+}
+
+function relationCard(r) {
+  return `<div class="card rel ${r.type}">
+    <div class="rel-head">
+      <span class="verdict">${esc(r.type)}</span>
+      <span class="chip">${esc(r.reason_code)}</span>
+      <span class="chip">confidence ${r.confidence}</span>
+      <span class="chip">${r.cross_document ? "cross-document" : "same document"}</span>
+      <span class="chip">${esc(r.adjudicator)}</span>
+    </div>
+    <div class="explanation">${esc(r.explanation)}</div>
+    <div class="sides">${factSide(r.a)}${factSide(r.b)}</div>
+    <details class="analysis"><summary>the comparison behind this verdict</summary>
+      <pre>${esc(JSON.stringify(r.analysis, null, 2))}</pre></details>
+  </div>`;
+}
+
+async function render() {
+  const view = $("view");
+  view.innerHTML = `<div class="empty">loading…</div>`;
+
+  if (current === "relations") {
+    const types = ["contradicts", "reconciled", "supersedes", "corroborates", "related", "undetermined"];
+    const filters = `<div class="bar" style="margin:0 0 16px">
+      <button class="${!relFilter ? "on" : ""}" data-f="">all</button>
+      ${types.map(t => `<button class="${relFilter === t ? "on" : ""}" data-f="${t}">${t}</button>`).join("")}
+      </div>`;
+    const d = await get("/api/relations?limit=300" + (relFilter ? `&type=${relFilter}` : ""));
+    view.innerHTML = filters + (d.relations.length
+      ? d.relations.map(relationCard).join("")
+      : `<div class="empty">No relationships yet. Upload two documents that discuss the same thing.</div>`);
+    view.querySelectorAll("[data-f]").forEach(b =>
+      b.onclick = () => { relFilter = b.dataset.f || null; render(); });
+  }
+
+  else if (current === "facts") {
+    const q = $("search").value.trim();
+    const d = await get("/api/facts?limit=400" + (q ? `&q=${encodeURIComponent(q)}` : ""));
+    view.innerHTML = d.facts.length ? `<div class="scroll"><table>
+      <tr><th>Value</th><th>Measure</th><th>Entity</th><th>Period</th><th>Basis</th><th>Evidence</th></tr>
+      ${d.facts.map(f => `<tr>
+        <td class="num"><b>${esc(f.value)}</b></td>
+        <td>${esc(f.measure)}<div class="chip">${esc(f.measure_key)}</div></td>
+        <td>${esc(f.entity)}</td>
+        <td>${f.period ? esc(f.period.label || f.period.raw) : "<span style='color:var(--muted)'>—</span>"}</td>
+        <td>${esc((f.basis || []).join(", ")) || "—"}</td>
+        <td><blockquote>${esc(f.evidence.quote)}</blockquote><div class="src">${esc(f.evidence.locator)}</div></td>
+      </tr>`).join("")}</table></div>
+      <p class="src">showing ${d.facts.length} of ${d.total}</p>` : `<div class="empty">No facts yet.</div>`;
+  }
+
+  else if (current === "documents") {
+    const d = await get("/api/documents");
+    view.innerHTML = d.documents.length ? `<div class="scroll"><table>
+      <tr><th>Title</th><th>Publisher</th><th>Published</th><th>Pages</th><th>Facts</th><th>Coverage</th></tr>
+      ${d.documents.map(x => `<tr>
+        <td><b>${esc(x.title || x.filename)}</b><div class="src">${esc(x.filename)}</div></td>
+        <td>${esc(x.publisher || "—")}</td><td>${esc(x.published || "—")}</td>
+        <td class="num">${x.pages}</td><td class="num">${x.stats.facts ?? "—"}</td>
+        <td class="num">${x.stats.units_processed ?? "?"} / ${x.stats.units_total ?? "?"} units</td>
+      </tr>`).join("")}</table></div>` : `<div class="empty">No documents yet.</div>`;
+  }
+
+  else if (current === "measures") {
+    const d = await get("/api/measures");
+    view.innerHTML = `<p class="src">The schema is not predefined. Every measure below was created at
+      ingest time from the documents themselves.</p><div class="scroll"><table>
+      <tr><th>Measure</th><th>Kind</th><th>Seen</th><th>Surface forms merged into it</th></tr>
+      ${d.measures.map(m => `<tr>
+        <td><b>${esc(m.label)}</b><div class="chip">${esc(m.key)}</div></td>
+        <td>${esc(m.kind)}</td><td class="num">${m.support}</td>
+        <td>${Object.entries(m.surface_forms).map(([k, v]) => `${esc(k)} <span class="chip">${v}</span>`).join("<br>")}</td>
+      </tr>`).join("")}</table></div>`;
+  }
+
+  else if (current === "failures") {
+    const d = await get("/api/failures?limit=300");
+    const summary = Object.entries(d.summary).map(([k, v]) => `<span class="chip">${esc(k)}: ${v}</span>`).join(" ");
+    view.innerHTML = `<p class="src">Claims the system rejected or could not read. Recorded rather than
+      discarded — a layer that cannot report its blind spots invites more trust than it has earned.</p>
+      <div class="bar" style="margin:0 0 16px">${summary || "<span class='chip'>none</span>"}</div>
+      ${d.failures.length ? `<div class="scroll"><table>
+      <tr><th>Kind</th><th>Page</th><th>Detail</th><th>Discarded input</th></tr>
+      ${d.failures.map(f => `<tr><td><b>${esc(f.kind)}</b></td><td class="num">${f.page ?? "—"}</td>
+        <td>${esc(f.detail)}</td><td><blockquote>${esc(f.sample || "—")}</blockquote></td></tr>`).join("")}
+      </table></div>` : `<div class="empty">No failures recorded.</div>`}`;
+  }
+}
+
+$("file").onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const body = new FormData();
+  body.append("file", file);
+  $("status").textContent = `uploading ${file.name}…`;
+  const { job_id } = await fetch("/api/documents", { method: "POST", body }).then(r => r.json());
+  const poll = setInterval(async () => {
+    const job = await get(`/api/jobs/${job_id}`);
+    if (job.status === "running") {
+      const p = job.progress || {};
+      $("status").textContent = `extracting ${file.name} — ${p.done || 0}/${p.total || "?"} units`;
+      return;
+    }
+    clearInterval(poll);
+    $("status").textContent = job.status === "done"
+      ? `done: ${job.report.facts} facts, ${job.report.link.relations_written} relationships`
+      : `failed: ${job.error}`;
+    loadStats(); render();
+  }, 2000);
+};
+
+$("refresh").onclick = () => { loadStats(); render(); };
+$("search").oninput = () => { if (current === "facts") render(); };
+
+renderTabs(); loadStats(); render();
+</script>
+</body>
+</html>
