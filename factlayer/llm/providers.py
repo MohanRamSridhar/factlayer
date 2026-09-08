@@ -13,9 +13,10 @@ project, and a project that dead-ends without a paid API key does not meet that
 bar. Quality drops without a model; the system says so rather than pretending.
 
 Gemini is the default because its free tier makes the project runnable by a
-reviewer at no cost. That tier is rate limited rather than metered, so the
-provider paces itself (see ``_RateLimiter``) instead of relying on retries to
-absorb a burst.
+reviewer at no cost. That tier meters *requests*, not tokens, and the newest
+models allow very few per day -- which is why the pipeline batches many pages
+into each call and why this provider paces itself rather than discovering the
+limit through 429s.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import logging
 import shutil
 import subprocess
 import threading
@@ -31,6 +33,8 @@ import urllib.error
 import urllib.request
 
 from .base import LLMError, LLMProvider, LLMUnavailable, ResponseCache
+
+log = logging.getLogger("factlayer.llm")
 
 
 class AnthropicProvider(LLMProvider):
@@ -119,6 +123,10 @@ class ClaudeCLIProvider(LLMProvider):
         return payload.get("result", "") or ""
 
 
+class _UnsupportedConfig(Exception):
+    """The request carried a field this model does not accept."""
+
+
 class _RateLimiter:
     """Client-side minimum interval between calls, shared across threads.
 
@@ -188,19 +196,23 @@ class GeminiProvider(LLMProvider):
         if thinking_budget is None:
             thinking_budget = int(os.environ.get("FACTLAYER_GEMINI_THINKING", "0"))
         self.thinking_budget = thinking_budget
+        # Models discovered at runtime to reject thinkingConfig.
+        self._no_thinking: set[str] = set()
 
     def available(self) -> bool:
         return bool(self.api_key)
 
-    def _payload(self, system: str, user: str, max_tokens: int) -> dict:
+    def _payload(self, system: str, user: str, max_tokens: int, model: str) -> dict:
         config: dict = {
             "temperature": 0.0,
             "maxOutputTokens": max_tokens,
             "responseMimeType": "application/json",
         }
-        # Only 2.5-series models accept thinkingConfig; sending it to a 2.0
-        # model is rejected, so it is opt-in via budget >= 0 on those models.
-        if self.thinking_budget >= 0:
+        # Support for thinkingConfig varies by model and the API only says
+        # "invalid argument" when it is unwelcome. Rather than hard-code a list
+        # that will be wrong next month, the provider tries it once per model
+        # and remembers the answer.
+        if self.thinking_budget >= 0 and model not in self._no_thinking:
             config["thinkingConfig"] = {"thinkingBudget": self.thinking_budget}
         body: dict = {
             "contents": [{"role": "user", "parts": [{"text": user}]}],
@@ -214,7 +226,16 @@ class GeminiProvider(LLMProvider):
         if not self.api_key:
             raise LLMUnavailable("GEMINI_API_KEY is not set")
 
-        body = json.dumps(self._payload(system, user, max_tokens)).encode("utf-8")
+        try:
+            return self._post(system, user, model, max_tokens)
+        except _UnsupportedConfig:
+            # Learn it once, then proceed without the offending field.
+            self._no_thinking.add(model)
+            log.info("model %s rejects thinkingConfig; retrying without it", model)
+            return self._post(system, user, model, max_tokens)
+
+    def _post(self, system: str, user: str, model: str, max_tokens: int) -> str:
+        body = json.dumps(self._payload(system, user, max_tokens, model)).encode("utf-8")
         request = urllib.request.Request(
             f"{self.endpoint}/{model}:generateContent",
             data=body,
@@ -232,6 +253,13 @@ class GeminiProvider(LLMProvider):
                 payload = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:300]
+            if (
+                exc.code == 400
+                and "INVALID_ARGUMENT" in detail
+                and model not in self._no_thinking
+                and self.thinking_budget >= 0
+            ):
+                raise _UnsupportedConfig(detail) from exc
             if exc.code in (429, 500, 503):
                 # Rate limited or the model is briefly overloaded. Both resolve
                 # by waiting, and both are guaranteed to happen somewhere in a
