@@ -250,10 +250,19 @@ def parse_period(
     return None
 
 
-_FY_END_HINTS = [
-    re.compile(r"(?:financial|fiscal)\s+year\s+ende[dr]\s+(?:\d{1,2}\s+)?([A-Za-z]{3,9})", re.I),
-    re.compile(r"(?:year|period)\s+ended\s+([A-Za-z]{3,9})\s+\d{1,2},?\s*\d{4}", re.I),
-    re.compile(r"for\s+the\s+year\s+ended\s+(?:\d{1,2}\s+)?([A-Za-z]{3,9})", re.I),
+_MONTH_ALT = "|".join(sorted(MONTHS, key=len, reverse=True))
+
+# Weighted, because these statements are not equally authoritative. A document
+# saying "financial year ended March 31" is declaring its own convention; a line
+# saying "year ended December 31" may just be a comparative or an interim stub.
+# Crucially "period ended ..." is excluded: prospectuses carry interim stubs like
+# "for the period ended December 31, 2021" in bulk, and counting those makes a
+# March-year-end company look like a December one.
+_FY_END_HINTS: list[tuple[re.Pattern[str], float]] = [
+    (re.compile(rf"(?:financial|fiscal)\s+year\s+ende[dr]\s+(?:on\s+)?(?:\d{{1,2}}\s+)?({_MONTH_ALT})\b", re.I), 5.0),
+    (re.compile(rf"\byear\s+ended\s+(?:\d{{1,2}}\s+)?({_MONTH_ALT})\s+\d{{1,2}},?\s*\d{{4}}\b", re.I), 1.0),
+    (re.compile(rf"\byear\s+ending\s+(?:\d{{1,2}}\s+)?({_MONTH_ALT})\b", re.I), 1.0),
+    (re.compile(rf"\bas\s+(?:on|at)\s+(?:\d{{1,2}}\s+)?({_MONTH_ALT})\s+\d{{1,2}},?\s*\d{{4}}\b", re.I), 0.25),
 ]
 
 
@@ -263,13 +272,22 @@ def infer_fiscal_year_end(text: str) -> int | None:
     Preferring the document's own statement over a global default is what keeps
     this generic: a US 10-K saying "fiscal year ended September 30" resolves its
     FY labels correctly with no configuration.
+
+    Returns None when the document says nothing, leaving the caller on the
+    configured default rather than inventing a convention.
     """
-    counts: dict[int, int] = {}
-    for pattern in _FY_END_HINTS:
+    scores: dict[int, float] = {}
+    for pattern, weight in _FY_END_HINTS:
         for m in pattern.finditer(text):
             mon = MONTHS.get(m.group(1).lower())
             if mon:
-                counts[mon] = counts.get(mon, 0) + 1
-    if not counts:
+                scores[mon] = scores.get(mon, 0.0) + weight
+    if not scores:
         return None
-    return max(counts, key=lambda k: counts[k])
+    best = max(scores, key=lambda k: scores[k])
+    # Require a clear winner; an even split means the document is ambiguous and
+    # the caller is better off with the configured default.
+    ranked = sorted(scores.values(), reverse=True)
+    if len(ranked) > 1 and ranked[0] < ranked[1] * 1.25:
+        return None
+    return best
