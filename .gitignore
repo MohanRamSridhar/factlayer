@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 .env
 data/*.db
+data/*.db-wal
+data/*.db-shm
 data/uploads/
 data/cache/
 .DS_Store
