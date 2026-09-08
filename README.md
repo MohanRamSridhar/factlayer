@@ -17,7 +17,7 @@ Requires Python 3.10+ and a Gemini API key (the free tier is enough — get one 
 [aistudio.google.com/apikey](https://aistudio.google.com/apikey)).
 
 ```bash
-git clone <this-repo> && cd factlayer
+git clone https://github.com/MohanRamSridhar/factlayer && cd factlayer
 
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
@@ -25,6 +25,10 @@ pip install -e .
 cp .env.example .env
 # open .env and paste your key into GEMINI_API_KEY=
 ```
+
+The `-e .` install is what puts the `factlayer` command on your PATH. If you
+would rather not install anything, every command below also works as
+`python -m factlayer.cli ...` from the repo root.
 
 **Run the UI:**
 
