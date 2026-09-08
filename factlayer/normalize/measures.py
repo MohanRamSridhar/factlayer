@@ -45,7 +45,7 @@ from .entities import strip_accents
 STOPWORDS = frozenset(
     """
     a an the of in for on at to from by with and or as its their this that these those
-    total rate value amount figure level number quantum size overall
+    rate value amount figure level number quantum size
     is was are were be been being
     """.split()
 )
@@ -127,7 +127,7 @@ class MeasureRegistry:
     property the brief asks about.
     """
 
-    def __init__(self, threshold: float = 0.62) -> None:
+    def __init__(self, threshold: float = 0.68) -> None:
         self.threshold = threshold
         self.clusters: dict[str, MeasureCluster] = {}
         self._document_frequency: Counter = Counter()
@@ -248,7 +248,7 @@ class MeasureRegistry:
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "MeasureRegistry":
-        registry = cls(threshold=payload.get("threshold", 0.62))
+        registry = cls(threshold=payload.get("threshold", 0.68))
         registry._observations = payload.get("observations", 0)
         registry._document_frequency = Counter(payload.get("document_frequency", {}))
         for raw in payload.get("clusters", []):

@@ -41,9 +41,15 @@ Return a JSON array. Each element:
 
 {
   "fact_type": "numeric" | "state" | "event" | "attribute",
-  "subject": "who or what the claim is about, as named in the text",
-  "measure": "what is being measured or asserted, in the document's own words \
-(e.g. 'revenue from services', 'real GDP growth', 'board membership')",
+  "subject": "the entity the claim is about: an organisation, country, \
+institution, market or person. NOT the thing being measured. If the sentence is \
+about a line item ('subsidies grew 25.7 per cent'), the subject is the entity \
+that line item belongs to ('state governments'), never 'subsidies'.",
+  "measure": "a SELF-CONTAINED description of what is measured, in the \
+document's own words, that would still be unambiguous read on its own with no \
+surrounding text. Include the thing measured, not just the operation applied to \
+it. Bad: 'growth'. Good: 'growth in subsidy expenditure'. Bad: 'total'. Good: \
+'total expenditure'.",
   "value_raw": "the value exactly as written, including symbols, scale words and \
 brackets (e.g. '₹8,142 Cr', '(4,516.08)', '6.4 per cent'). Null for non-numeric facts.",
   "value_text": "for non-numeric facts, the asserted value in a few words \
@@ -94,6 +100,13 @@ if the exclusion was recorded.
 8. STATE AND EVENT FACTS. A person holding a role, an office being located \
 somewhere, a status taking effect on a date - all extractable. For these set \
 value_raw to null and describe the value in value_text.
+
+9. NAME MEASURES SO THEY MATCH ACROSS DOCUMENTS. Another document will describe \
+the same quantity in different words, and the two are only compared if their \
+measure names share distinctive terms. Keep the document's own wording, but keep \
+the words that identify the quantity: write 'real GDP growth', not 'growth'; \
+write 'net FPI inflows', not 'inflows'. Drop only filler ('the level of', 'the \
+figure for').
 
 If the text contains no checkable claims, return [].
 """
