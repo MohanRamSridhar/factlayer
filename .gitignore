@@ -9,3 +9,6 @@ data/cache/
 .pytest_cache/
 *.egg-info/
 scratch/
+
+# exported conversation transcripts
+*-local-command-caveat*.txt

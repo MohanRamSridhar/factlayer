@@ -8,6 +8,7 @@ from .base import (
 )
 from .providers import (
     AnthropicProvider,
+    GeminiProvider,
     ClaudeCLIProvider,
     NullProvider,
     build_provider,
@@ -21,6 +22,7 @@ __all__ = [
     "map_concurrent",
     "parse_json_loose",
     "AnthropicProvider",
+    "GeminiProvider",
     "ClaudeCLIProvider",
     "NullProvider",
     "build_provider",
