@@ -432,6 +432,14 @@ a month rather than a span, and relative expressions ("the previous year") stay
 unresolved. Unresolved periods are handled honestly — they downgrade a verdict
 to `UNDETERMINED` rather than being guessed at — but they cost recall.
 
+**The measure registry is order-dependent.** Keys are assigned against whatever
+the registry has already seen, so re-ingesting one document into a populated
+layer can cluster its measures slightly differently than the original run did —
+re-uploading the IMF report changed the relation count from 572 to 570. Nothing
+is lost or corrupted, but the layer is not perfectly reproducible under
+reordering, and a strict system would either version the registry or re-key
+affected facts when a cluster changes.
+
 **Confidence scores are heuristic.** They order results usefully and should not
 be read as calibrated probabilities.
 
