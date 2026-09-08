@@ -36,6 +36,9 @@ class ExtractionUnit:
     unit_hint: str | None = None
     magnitude_hint: float | None = None
     density: float = 0.0
+    # Populated only for batched units, which cover several pages in one call.
+    # ``page`` stays the first page so single-page behaviour is unchanged.
+    pages: list[int] = field(default_factory=list)
 
     @property
     def char_start(self) -> int:
@@ -127,6 +130,78 @@ def build_units(
         flush()
 
     return units
+
+
+def build_batches(
+    doc: IngestedDocument,
+    target_chars: int = 16000,
+    min_density: float = 0.12,
+    max_pages: int = 10,
+) -> list[ExtractionUnit]:
+    """Group *pages* into units, many pages to one LLM call.
+
+    ``build_units`` sizes a unit for a small context window: one page, a few
+    thousand characters. That was the wrong shape for the model actually being
+    used. A 1M-token context has no difficulty with twenty pages at once, and
+    the free API tier meters *requests per day*, not tokens -- so page-sized
+    chunks were spending the entire daily budget on a fraction of one document.
+    Batching cuts calls by roughly ten times at no cost in quality.
+
+    Page provenance survives because each page is introduced by an explicit
+    ``[[PAGE n]]`` marker and the model reports which page each claim came
+    from. Grounding then verifies the quote against *that page's* text, so a
+    misreported page fails the check and is discarded rather than mislabelled.
+    Evidence remains as trustworthy as it was with page-local units; only the
+    packaging changed.
+    """
+    batches: list[ExtractionUnit] = []
+    current: list[Page] = []
+    current_len = 0
+
+    def flush() -> None:
+        nonlocal current, current_len
+        if not current:
+            return
+        pages = [p.number for p in current]
+        body = "\n\n".join(f"[[PAGE {p.number}]]\n{p.text}" for p in current)
+        blocks = [b for p in current for b in p.blocks]
+        densities = [b.density for b in blocks] or [0.0]
+        # A scale note is only safe to apply when every page in the batch agrees
+        # on it; otherwise a bare table number could be scaled by another page's
+        # unit. Ambiguity here silently corrupts magnitudes, so it is dropped.
+        hints = {p.unit_hint for p in current}
+        magnitudes = {p.magnitude_hint for p in current}
+        batches.append(
+            ExtractionUnit(
+                id=f"{doc.document.id}_b{len(batches)}_p{pages[0]}-{pages[-1]}",
+                doc_id=doc.document.id,
+                page=pages[0],
+                pages=pages,
+                text=body,
+                blocks=blocks,
+                heading=None,
+                unit_hint=hints.pop() if len(hints) == 1 else None,
+                magnitude_hint=magnitudes.pop() if len(magnitudes) == 1 else None,
+                density=max(densities),
+            )
+        )
+        current, current_len = [], 0
+
+    for page in doc.pages:
+        blocks = [b for b in page.blocks if b.text.strip()]
+        if not blocks:
+            continue
+        # The density filter still earns its keep: it is now deciding whether a
+        # page is worth including in a batch rather than worth its own call.
+        if max(b.density for b in blocks) < min_density:
+            continue
+        if current and (current_len + len(page.text) > target_chars or len(current) >= max_pages):
+            flush()
+        current.append(page)
+        current_len += len(page.text)
+    flush()
+
+    return batches
 
 
 def unit_stats(units: list[ExtractionUnit]) -> dict[str, float]:

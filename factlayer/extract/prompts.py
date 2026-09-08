@@ -66,6 +66,8 @@ Null if the text gives none.",
 (e.g. 'NSO', 'staff estimates'), else null",
   "quote": "a VERBATIM span copied character-for-character from the SOURCE TEXT \
 that contains this claim. It must appear in the source exactly.",
+  "page": "the number from the [[PAGE n]] marker immediately above the text this \
+claim came from. Required whenever page markers are present.",
   "confidence": 0.0 to 1.0
 }
 
@@ -101,7 +103,12 @@ if the exclusion was recorded.
 somewhere, a status taking effect on a date - all extractable. For these set \
 value_raw to null and describe the value in value_text.
 
-9. NAME MEASURES SO THEY MATCH ACROSS DOCUMENTS. Another document will describe \
+9. REPORT THE PAGE. The source text may contain several pages, each introduced \
+by a [[PAGE n]] marker. Set "page" to the number of the marker the quote sits \
+under. Do not copy the marker itself into the quote. A claim whose quote is not \
+found on the page it names is discarded, so report the page carefully.
+
+10. NAME MEASURES SO THEY MATCH ACROSS DOCUMENTS. Another document will describe \
 the same quantity in different words, and the two are only compared if their \
 measure names share distinctive terms. Keep the document's own wording, but keep \
 the words that identify the quantity: write 'real GDP growth', not 'growth'; \

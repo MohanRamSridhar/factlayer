@@ -109,6 +109,16 @@ def _coerce_str(value: Any) -> str | None:
     return str(value)
 
 
+def _coerce_page(value: Any, unit: ExtractionUnit) -> int:
+    """Resolve the page a claim was reported against, defaulting to the unit's."""
+    allowed = unit.pages or [unit.page]
+    try:
+        page = int(str(value).strip())
+    except (TypeError, ValueError):
+        return unit.page
+    return page if page in allowed else unit.page
+
+
 def _coerce_basis(value: Any) -> list[str]:
     if not value:
         return []
@@ -126,7 +136,7 @@ def _coerce_basis(value: Any) -> list[str]:
 def build_fact(
     raw: dict[str, Any],
     unit: ExtractionUnit,
-    page_text: str,
+    page_texts: dict[int, str],
     doc_id: str,
     principal_entity: str | None,
     published: date | None,
@@ -157,7 +167,24 @@ def build_fact(
     if not quote:
         return fail("missing_quote", "no quote supplied, so the claim cannot be grounded")
 
+    # Which page did this come from? A batched unit spans several, and the model
+    # reports the one it read. An out-of-range answer is not trusted: it falls
+    # back to the unit's first page, where the quote almost certainly will not
+    # be found, so the claim is rejected rather than filed under a wrong page.
+    page = _coerce_page(raw.get("page"), unit)
+    page_text = page_texts.get(page, unit.text)
+
     location = locate_quote(page_text, quote)
+    if location is None and len(unit.pages) > 1:
+        # Tolerate a misreported page when the quote is genuinely present
+        # elsewhere in the batch: the evidence is real, only the label was wrong.
+        for candidate in unit.pages:
+            if candidate == page:
+                continue
+            found = locate_quote(page_texts.get(candidate, ""), quote)
+            if found is not None:
+                page, location = candidate, found
+                break
     if location is None:
         return fail(
             "ungrounded_quote",
@@ -240,7 +267,7 @@ def build_fact(
 
     evidence = Evidence(
         doc_id=doc_id,
-        page=unit.page,
+        page=page,
         quote=location.text.strip(),
         char_start=location.start,
         char_end=location.end,
@@ -336,10 +363,9 @@ class LLMExtractor:
                     )
                 )
                 continue
-            page_text = page_texts.get(unit.page, unit.text)
             for raw in items:
                 fact, failure = build_fact(
-                    raw, unit, page_text, doc_id, principal_entity,
+                    raw, unit, page_texts, doc_id, principal_entity,
                     published, fy_end_month, self.name,
                 )
                 if fact is not None:

@@ -9,11 +9,12 @@ dependencies = [
     "uvicorn[standard]>=0.29",
     "pydantic>=2.6",
     "python-multipart>=0.0.9",
-    "anthropic>=0.34",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# Only needed for FACTLAYER_LLM=anthropic; Gemini uses urllib.
+anthropic = ["anthropic>=0.34"]
 
 [project.scripts]
 factlayer = "factlayer.cli:main"

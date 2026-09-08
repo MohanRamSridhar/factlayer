@@ -12,10 +12,11 @@ than consequences:
 the measure registry is persistent, and linking is restricted to pairs touching
 the new document. The tenth PDF costs what the second cost.
 
-**Budget is a first-class parameter.** A 100-page filing is mostly boilerplate,
-and an LLM call per page of signature blocks buys nothing. Units are ranked by
-density and capped, so a reviewer on a free API tier can process a real document
-without waiting an hour. The cap is reported, never hidden -- a run that skipped
+**Budget is a first-class parameter, measured in requests.** The free API tier
+meters requests per day, not tokens, and the model has a million-token context.
+So pages are batched ten at a time into one call and the density filter drops
+boilerplate before batching. A 100-page filing costs a handful of requests
+instead of a hundred. The cap is reported, never hidden -- a run that skipped
 material says so in its stats.
 """
 
@@ -29,7 +30,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .extract.llm_extractor import ExtractionResult, LLMExtractor, extract_document_metadata
-from .ingest.chunk import build_units, unit_stats
+from .ingest.chunk import build_batches, unit_stats
 from .ingest.pdf import ingest_pdf
 from .link.candidates import Linker, LinkReport
 from .llm import LLMProvider, ResponseCache, build_provider
@@ -51,7 +52,10 @@ class Settings:
     extract_model: str = "gemini-3.8-flash"
     adjudicate_model: str = "gemini-3.8-flash"
     concurrency: int = 4
-    max_units_per_doc: int = 60
+    max_units_per_doc: int = 14
+    batch_target_chars: int = 16000
+    batch_max_pages: int = 10
+    max_output_tokens: int = 32000
     min_density: float = 0.12
     fy_end_month: int = DEFAULT_FY_END_MONTH
 
@@ -65,7 +69,10 @@ class Settings:
             extract_model=os.environ.get("FACTLAYER_EXTRACT_MODEL", "gemini-3.8-flash"),
             adjudicate_model=os.environ.get("FACTLAYER_ADJUDICATE_MODEL", "gemini-3.8-flash"),
             concurrency=int(os.environ.get("FACTLAYER_MAX_CONCURRENCY", "4")),
-            max_units_per_doc=int(os.environ.get("FACTLAYER_MAX_UNITS_PER_DOC", "60")),
+            max_units_per_doc=int(os.environ.get("FACTLAYER_MAX_UNITS_PER_DOC", "14")),
+            batch_target_chars=int(os.environ.get("FACTLAYER_BATCH_CHARS", "16000")),
+            batch_max_pages=int(os.environ.get("FACTLAYER_BATCH_PAGES", "10")),
+            max_output_tokens=int(os.environ.get("FACTLAYER_MAX_OUTPUT_TOKENS", "32000")),
             min_density=float(os.environ.get("FACTLAYER_MIN_DENSITY", "0.12")),
         )
 
@@ -174,7 +181,12 @@ class Pipeline:
         report.title = document.title
 
         # -- chunking --------------------------------------------------------
-        units = build_units(ingested, min_density=self.settings.min_density)
+        units = build_batches(
+            ingested,
+            target_chars=self.settings.batch_target_chars,
+            min_density=self.settings.min_density,
+            max_pages=self.settings.batch_max_pages,
+        )
         report.units_total = len(units)
 
         cap = max_units if max_units is not None else self.settings.max_units_per_doc
@@ -182,7 +194,7 @@ class Pipeline:
             # Highest-density units first: the pages that assert the most.
             units = sorted(units, key=lambda u: -u.density)[:cap]
             report.notes.append(
-                f"Budget cap applied: {report.units_total} extraction units found, "
+                f"Budget cap applied: {report.units_total} page batches found, "
                 f"{cap} processed (highest density first). Raise FACTLAYER_MAX_UNITS_PER_DOC "
                 "for full coverage."
             )
@@ -196,6 +208,7 @@ class Pipeline:
                 self.provider,
                 self.settings.extract_model,
                 concurrency=self.settings.concurrency,
+                max_tokens=self.settings.max_output_tokens,
             )
             result = extractor.extract_units(
                 units, page_texts, document.id, principal_entity,
