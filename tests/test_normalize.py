@@ -129,3 +129,52 @@ class TestEntities:
         assert same_entity("Delhivery Limited", "Delhivery")
         assert same_entity("Mr. Suvir Suren Sujan", "S. S. Sujan")
         assert not same_entity("Delhivery Limited", "Blue Dart Express Limited")
+
+
+# -- Reading order ---------------------------------------------------------
+
+
+def test_two_column_pages_are_not_interleaved():
+    """Regression: interleaved columns silently destroyed grounding.
+
+    Blocks are (x0, y0, x1, y1, text, block_no, block_type). A two-column page
+    sorted purely top-to-bottom alternates between columns, producing text that
+    a model can still read -- so it quotes the reassembled sentence, and the
+    quote is then not found on the page. The document fails grounding wholesale
+    while looking like a model problem.
+    """
+    from factlayer.ingest.pdf import detect_two_columns, sort_reading_order
+
+    width = 600.0
+    blocks = []
+    for i in range(4):
+        y = 100.0 + i * 20
+        blocks.append((40.0, y, 280.0, y + 15, f"left {i}", i, 0))
+        blocks.append((320.0, y, 560.0, y + 15, f"right {i}", i, 0))
+
+    assert detect_two_columns(blocks, width) == 300.0
+    order = [b[4] for b in sort_reading_order(blocks, width)]
+    assert order == ["left 0", "left 1", "left 2", "left 3",
+                     "right 0", "right 1", "right 2", "right 3"]
+
+
+def test_single_column_pages_keep_top_to_bottom_order():
+    from factlayer.ingest.pdf import detect_two_columns, sort_reading_order
+
+    width = 600.0
+    blocks = [(40.0, 100.0 + i * 20, 560.0, 115.0 + i * 20, f"line {i}", i, 0) for i in range(8)]
+    assert detect_two_columns(blocks, width) is None
+    assert [b[4] for b in sort_reading_order(blocks, width)] == [f"line {i}" for i in range(8)]
+
+
+def test_full_width_headings_stay_with_the_left_flow():
+    """A banner heading must precede the section it introduces, not trail it."""
+    from factlayer.ingest.pdf import sort_reading_order
+
+    width = 600.0
+    blocks = [(40.0, 50.0, 560.0, 70.0, "HEADING", 0, 0)]
+    for i in range(3):
+        y = 100.0 + i * 20
+        blocks.append((40.0, y, 280.0, y + 15, f"left {i}", i, 0))
+        blocks.append((320.0, y, 560.0, y + 15, f"right {i}", i, 0))
+    assert [b[4] for b in sort_reading_order(blocks, width)][0] == "HEADING"

@@ -228,6 +228,72 @@ class IngestedDocument:
         return [b for p in self.pages for b in p.blocks]
 
 
+def detect_two_columns(blocks: list, page_width: float) -> float | None:
+    """Find the x of a column gutter, or None if the page is single-column.
+
+    Institutional reports are typeset in two columns far more often than not,
+    and sorting their blocks top-to-bottom interleaves the columns line by line.
+    The resulting text is still *readable* by a language model -- which is
+    precisely the danger. The model silently reassembles the real sentence and
+    quotes that, the quote is then not found verbatim on the page, and the fact
+    is discarded. An entire document can fail grounding this way while looking
+    like a model quality problem.
+
+    Detection is deliberately conservative: a gutter is only accepted when both
+    sides carry real content and few blocks straddle it, so a single-column page
+    with a stray sidebar is left alone.
+    """
+    if page_width <= 0 or len(blocks) < 6:
+        return None
+
+    gutter = page_width / 2.0
+    margin = page_width * 0.04
+
+    left = right = straddling = 0
+    for b in blocks:
+        x0, x1 = b[0], b[2]
+        if x0 < gutter - margin and x1 > gutter + margin:
+            straddling += 1
+        elif x1 <= gutter + margin:
+            left += 1
+        else:
+            right += 1
+
+    sided = left + right
+    if sided == 0:
+        return None
+    # Both columns must be populated, and full-width blocks (headings, wide
+    # tables) must be the exception rather than the rule.
+    if min(left, right) < 0.25 * sided:
+        return None
+    if straddling > 0.35 * len(blocks):
+        return None
+    return gutter
+
+
+def sort_reading_order(blocks: list, page_width: float) -> list:
+    """Order blocks the way a human reads them.
+
+    Single column: top-to-bottom, then left-to-right. Two columns: the left
+    column in full, then the right, with full-width blocks kept in the left
+    flow at their vertical position so headings still precede their section.
+    """
+    blocks = [b for b in blocks if len(b) >= 5]
+    gutter = detect_two_columns(blocks, page_width)
+    if gutter is None:
+        return sorted(blocks, key=lambda b: (round(b[1], 1), round(b[0], 1)))
+
+    margin = page_width * 0.04
+
+    def column_of(b) -> int:
+        x0, x1 = b[0], b[2]
+        if x0 < gutter - margin and x1 > gutter + margin:
+            return 0  # spans both columns; keep it in the left-hand flow
+        return 0 if x1 <= gutter + margin else 1
+
+    return sorted(blocks, key=lambda b: (column_of(b), round(b[1], 1), round(b[0], 1)))
+
+
 def ingest_pdf(path: str | Path, doc_id: str | None = None) -> IngestedDocument:
     """Read a PDF into pages and provenance-carrying blocks."""
     path = Path(path)
@@ -242,8 +308,7 @@ def ingest_pdf(path: str | Path, doc_id: str | None = None) -> IngestedDocument:
         for page_index in range(pdf.page_count):
             page = pdf[page_index]
             raw_blocks = page.get_text("blocks") or []
-            # Reading order: top-to-bottom, then left-to-right.
-            raw_blocks.sort(key=lambda b: (round(b[1], 1), round(b[0], 1)))
+            raw_blocks = sort_reading_order(raw_blocks, page.rect.width)
 
             page_text_parts: list[str] = []
             offsets: list[tuple[int, int]] = []
