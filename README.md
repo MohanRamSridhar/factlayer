@@ -240,13 +240,24 @@ and finding that measures were being named too thinly to match across documents.
 
 ## The Four Required Cases
 
-All four are real output from the three-document India macroeconomy dataset
-(Economic Survey 2024-25, RBI Annual Report 2024-25, IMF Article IV 2025).
-Reproduce with `factlayer ingest starter-datasets/india-macroeconomy` then
-`factlayer show --type <type>`.
+All output below is real, from **both** starter datasets ingested into one
+knowledge layer — three India macroeconomy reports (Economic Survey, RBI Annual
+Report, IMF Article IV) and three Delhivery company documents (2022 prospectus,
+FY24 annual report, Q4 FY24 earnings deck). Reproduce with:
 
-Run summary: **1,060 facts, 572 relationships** — 38 corroborations,
-345 reconciled, 2 contradictions, 107 undetermined, 138 recorded failures.
+```bash
+factlayer ingest starter-datasets/india-macroeconomy starter-datasets/delhivery
+factlayer show --type contradicts
+```
+
+**Run summary: 6 documents, 511 pages, 3,307 facts, 4,838 relationships** —
+119 corroborations, 734 reconciled, 20 contradictions, 3 supersessions,
+119 undetermined, 3,843 related, and 1,078 recorded failures. Fifty extraction
+requests total, on a free API tier.
+
+The two datasets share no vocabulary — macroeconomic aggregates and a logistics
+IPO prospectus — and nothing in the code was changed between them. Every measure
+in both was minted at runtime by the registry.
 
 ### 1. A fact corroborated across documents, expressed differently
 
@@ -334,6 +345,29 @@ Same measure, same country, incompatible definitions. The qualifiers were
 captured at extraction, so the engine can say *why* the figures differ instead
 of ranking one over the other.
 
+### 4b. A status superseded rather than contradicted
+
+Only visible once two documents about the same company sit in one layer. The
+2022 prospectus and the FY24 annual report disagree about Delhivery's Corporate
+Identity Number, and the system does not call that a conflict:
+
+> **SUPERSEDES** · `state_superseded` · cross-document
+>
+> **Prospectus, p30** (as of 2022-05-14) — *"Corporate Identity Number: U63090DL2011PLC221234"*
+> **Annual Report FY24, p51** (as of 2024-03-28) — *"Corporate Identity Number (CIN) of the Listed Entity L63090DL2011PLC221234"*
+
+The identifier really did change: the leading `U` marks an *unlisted* public
+company and the `L` a *listed* one. Delhivery listed in May 2022, between the
+two documents. A system comparing strings reports a contradiction; this one
+reports that the later document describes the current state, because state facts
+are ordered by publication date rather than compared for equality.
+
+The second is the brief's own example — differently written addresses for one
+place. *"Plot 5, Sector 44 Gurugram 122002 Haryana, India"* superseded by
+*"Plot No. 5, Sector 44, Gurugram, Haryana 122001"*. Note the postal codes also
+differ, so one of the two filings is likely wrong; the system surfaces the pair
+for a human rather than silently picking a winner.
+
 ### 4. An extraction or reasoning failure
 
 Three, in descending order of how much they cost.
@@ -352,7 +386,8 @@ they did not, which ruled out page misattribution and pointed at the text
 itself. Fixed with conservative column detection (`detect_two_columns`), applied
 only when both columns carry real content and few blocks straddle the gutter.
 
-Result: RBI facts went **174 → 563**, and total ungrounded quotes **429 → 131**.
+Result: RBI facts went **174 → 563**, and ungrounded quotes on the macro corpus
+**429 → 131**.
 This is the strongest argument for keeping the failure log as a product surface:
 the bug was invisible in the facts that succeeded and obvious in the ones that
 did not. Regression tests are in `tests/test_normalize.py`.
@@ -367,7 +402,18 @@ for our own ambiguity is the wrong answer, so a shared-evidence guard now
 returns `UNDETERMINED` / `shared_sentence_ambiguity` and flags the pair for
 review. Contradictions fell from 8 to 2, and the five it removed were all false.
 
-**c) What is still wrong.** 131 quotes remain ungrounded — mostly tables, where
+**c) A table row misalignment the system caught by disagreeing with itself.**
+The prospectus reports Deepak Kapoor's Director Identification Number as
+`00162957` on page 30 and as `01173669` on page 86. The second is wrong — it
+belongs to a different director on the same table — and it comes from column
+drift in a multi-row director table. Two things are worth noting. The layer
+holds both, so it corroborates the correct DIN across documents *and* raises a
+false supersession against the incorrect one, which is precisely the signal a
+reviewer needs to find the bad row. And the guard in (b) does not catch it,
+because the two facts sit on different pages: only cross-checking a fact against
+the rest of its own document would.
+
+**d) What is still wrong.** 1,027 quotes remain ungrounded — mostly tables, where
 the model reconstructs a row that never existed as contiguous text. 4 values
 would not parse, 3 did not appear in their own quote. And the registry still
 over-merges occasionally: it briefly treated "depletion in foreign exchange
@@ -426,10 +472,23 @@ recorded as a visibly different class of judgement. Not wired up.
 China and Geopolitics" — a chapter heading — for the Economic Survey. Cosmetic,
 but visible in the UI and in every explanation that names a document.
 
-**Only one dataset was run.** The Delhivery corpus was not ingested, so the
-state-supersession path (a director appearing active in one document and
-resigned in a later one) is exercised only by unit tests, not by real documents.
-The code path is there and tested; it has not been proven on a real filing.
+**The `related` bucket is 79% of all output and mostly noise.** 3,843 of 4,838
+relationships are `RELATED` — pairs sharing a measure and entity that turned out
+not to be comparable, usually because their units differ or their values
+coincide across different periods. They are honest (the engine is declining to
+judge) but they bury the interesting rows. They should be suppressed by default
+in the UI, or not persisted at all. Filter to any other type and the layer is
+immediately readable, which is why the UI opens on a filter bar.
+
+**Appointments and resignations never meet.** The Delhivery prospectus yields
+facts like "appointment as non-executive additional director" and "resignation
+as nominee director" for the same person, which is exactly the supersession the
+brief describes — but they land in different blocks, because the registry keys
+on the measure name and those names differ. The three supersessions that do fire
+are all identity and address facts, where both documents use the same measure
+wording. Making this work needs the blocking key to understand that appointment
+and resignation are the same *property* with opposite values, which is a
+modelling gap, not a tuning one.
 
 **Period resolution has gaps.** Ranges like "April to November 2024" resolve to
 a month rather than a span, and relative expressions ("the previous year") stay

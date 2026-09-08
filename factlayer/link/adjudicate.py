@@ -255,7 +255,13 @@ def adjudicate(a: Fact, b: Fact) -> Relation | None:
     if a.id == b.id:
         return None
 
-    if a.fact_type != "numeric" or b.fact_type != "numeric":
+    # Route on the data, not on the label. ``fact_type`` comes from the model
+    # and is unreliable: a board headcount arrives tagged "state" while still
+    # carrying a parsed quantity. Two facts that both have numbers get compared
+    # as numbers whatever they were called.
+    if a.quantity is not None and b.quantity is not None:
+        pass
+    elif a.fact_type != "numeric" or b.fact_type != "numeric":
         return _adjudicate_non_numeric(a, b)
 
     if a.quantity is None or b.quantity is None:
@@ -466,6 +472,12 @@ def _adjudicate_non_numeric(a: Fact, b: Fact) -> Relation | None:
     other; the second replaces the first. Treating them as a conflict is the
     mistake this branch exists to avoid.
     """
+    # One side asserts nothing textual -- usually a quantity mislabelled as a
+    # state. There is no assertion to supersede, so decline rather than pair a
+    # real value against an empty one.
+    if not (a.value_text or "").strip() or not (b.value_text or "").strip():
+        return None
+
     overlap = _text_overlap(a.value_text or "", b.value_text or "")
     vintage = compare_vintage(a, b)
     analysis = {
