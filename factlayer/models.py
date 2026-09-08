@@ -256,6 +256,7 @@ class ReasonCode(str, Enum):
     ESTIMATE_VS_ACTUAL = "estimate_vs_actual"
     RESIDUAL_EXPLAINED = "residual_explained"
     STATE_SUPERSEDED = "state_superseded"
+    SHARED_SENTENCE_AMBIGUITY = "shared_sentence_ambiguity"
     INSUFFICIENT_CONTEXT = "insufficient_context"
     LLM_JUDGEMENT = "llm_judgement"
 

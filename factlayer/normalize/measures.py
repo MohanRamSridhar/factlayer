@@ -55,6 +55,7 @@ STOPWORDS = frozenset(
 DERIVATIVE_MARKERS = frozenset(
     """
     growth change increase decrease decline rise fall
+    expansion contraction reduction addition accretion drawdown depletion
     share proportion percentage margin ratio contribution weight
     per capita average mean median cumulative incremental net gross
     forecast projection target estimate

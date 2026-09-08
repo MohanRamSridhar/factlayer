@@ -397,7 +397,24 @@ def _explain_or_contradict(
             analysis,
         )
 
-    # 5. Nothing in the context accounts for the gap.
+    # 5. Both figures came out of one sentence. A sentence almost never asserts
+    #    two different values for the same measure over the same period; when it
+    #    looks like it does, the extractor has split one statement badly ("rose
+    #    from 4.5 to 4.8 per cent") or the registry has merged two neighbouring
+    #    measures ("apparel" and "non-apparel" shares). Either way the fault is
+    #    ours, not the document's, and reporting a contradiction would blame the
+    #    source for our own ambiguity.
+    if _same_sentence(a, b):
+        return _relation(
+            a, b, RelationType.UNDETERMINED, ReasonCode.SHARED_SENTENCE_AMBIGUITY, 0.45,
+            f"{gap}. Both figures were extracted from the same sentence, so this is "
+            "far more likely to be one statement split badly or two neighbouring "
+            "measures merged than a real disagreement. Flagged for review rather "
+            "than reported as a contradiction.",
+            analysis,
+        )
+
+    # 6. Nothing in the context accounts for the gap.
     if periods["status"] == "unknown":
         return _relation(
             a, b, RelationType.UNDETERMINED, ReasonCode.INSUFFICIENT_CONTEXT, 0.4,
@@ -419,6 +436,19 @@ def _explain_or_contradict(
 # --------------------------------------------------------------------------
 # Non-numeric facts
 # --------------------------------------------------------------------------
+
+
+def _same_sentence(a: Fact, b: Fact) -> bool:
+    """Do both facts rest on the same span of source text?"""
+    if a.doc_id != b.doc_id or a.evidence.page != b.evidence.page:
+        return False
+    qa = " ".join((a.evidence.quote or "").split()).lower()
+    qb = " ".join((b.evidence.quote or "").split()).lower()
+    if not qa or not qb:
+        return False
+    # Containment as well as equality: extractors often return a short quote and
+    # a longer one covering it for two figures in the same clause.
+    return qa == qb or qa in qb or qb in qa
 
 
 def _text_overlap(a: str, b: str) -> float:
