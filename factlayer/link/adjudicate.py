@@ -54,7 +54,12 @@ _ESTIMATE_FIRMNESS = {
 }
 
 _DECIMALS_RE = re.compile(r"\d+\.(\d+)")
-_PERIOD_TOKEN_RE = re.compile(r"\b(q[1-4]|h[12]|fy|cy|quarter|half|year)\b", re.I)
+# Positional markers only -- the tokens that make two different windows *look*
+# like the same one. Word boundaries are deliberately not used: the whole point
+# is to match "Q2" inside both "Q2 FY25" and "2025Q2", where \b fails on the
+# digit side. Broader tokens (fy, year, quarter) are excluded on purpose: two
+# labels sharing only "FY" are visibly different and confuse nobody.
+_PERIOD_TOKEN_RE = re.compile(r"(?<![a-z])(q[1-4]|h[12])(?![a-z])", re.I)
 
 
 # --------------------------------------------------------------------------
