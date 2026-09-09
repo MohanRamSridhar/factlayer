@@ -90,7 +90,7 @@ nothing. The full dataset re-ingests from cache in about 3 seconds.
 
 ## Video Demo
 
-**[Watch the demo (under 3 minutes)](https://drive.google.com/file/d/1jKF8yyKlCR5_8RYDwQynNFCJCqbd6qi-/view?usp=sharing)**
+**[Watch the demo (under 3 minutes)](https://drive.google.com/file/d/1jKF8yyKlCR5_8RYDwQynNFCJCqbd6qi-/view?usp=share_link)**
 
 Covers a PDF being processed and all four required cases, with the source
 evidence and the engine's reasoning shown for the first three.
