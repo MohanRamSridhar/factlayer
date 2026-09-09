@@ -41,6 +41,49 @@ from .store.db import Store
 log = logging.getLogger("factlayer.pipeline")
 
 
+def load_project_env(start: Path | None = None) -> Path | None:
+    """Find the project's .env by walking up from the working directory.
+
+    Without this, running the server from one directory above the repo silently
+    produces a *different* system: no .env means no API key and no model
+    settings, and the relative database path creates an empty database beside
+    wherever you happened to be standing. Nothing errors -- you just get a
+    working UI with nothing in it, which is a genuinely confusing failure.
+
+    The directory holding the .env is treated as the project root, and relative
+    data paths resolve against it, so the same command works from anywhere
+    inside the project.
+    """
+    here = (start or Path.cwd()).resolve()
+    # Walk up from the working directory first, so running inside the project
+    # always wins. Then fall back to the directory the package itself lives in,
+    # which is the repo root for an editable install -- that covers the case
+    # where the command is run from *outside* the project entirely, where no
+    # amount of walking upwards would ever reach the .env.
+    searched = [*[here, *here.parents][:6], Path(__file__).resolve().parent.parent]
+    for directory in searched:
+        candidate = directory / ".env"
+        if candidate.is_file():
+            for line in candidate.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+            os.environ.setdefault("FACTLAYER_ROOT", str(directory))
+            return directory
+    return None
+
+
+def _resolve(path: str) -> str:
+    """Anchor a relative data path to the project root when one is known."""
+    candidate = Path(path)
+    if candidate.is_absolute():
+        return str(candidate)
+    root = os.environ.get("FACTLAYER_ROOT")
+    return str(Path(root) / candidate) if root else path
+
+
 @dataclass
 class Settings:
     """Everything tunable, resolved from the environment in one place."""
@@ -61,10 +104,12 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
+        # Safe to call repeatedly: it only ever sets defaults.
+        load_project_env()
         return cls(
-            db_path=os.environ.get("FACTLAYER_DB", "data/factlayer.db"),
-            cache_dir=os.environ.get("FACTLAYER_CACHE", "data/cache"),
-            upload_dir=os.environ.get("FACTLAYER_UPLOADS", "data/uploads"),
+            db_path=_resolve(os.environ.get("FACTLAYER_DB", "data/factlayer.db")),
+            cache_dir=_resolve(os.environ.get("FACTLAYER_CACHE", "data/cache")),
+            upload_dir=_resolve(os.environ.get("FACTLAYER_UPLOADS", "data/uploads")),
             backend=os.environ.get("FACTLAYER_LLM", "auto"),
             extract_model=os.environ.get("FACTLAYER_EXTRACT_MODEL", "gemini-3.8-flash"),
             adjudicate_model=os.environ.get("FACTLAYER_ADJUDICATE_MODEL", "gemini-3.8-flash"),

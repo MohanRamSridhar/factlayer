@@ -16,24 +16,7 @@ import sys
 from pathlib import Path
 
 from .link.candidates import interesting_relations
-from .pipeline import Pipeline, Settings
-
-
-def _load_dotenv(path: str = ".env") -> None:
-    """Minimal .env reader.
-
-    A dependency for this would be silly, and requiring the operator to export
-    six variables by hand before a demo would be worse.
-    """
-    file = Path(path)
-    if not file.exists():
-        return
-    for line in file.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+from .pipeline import Pipeline, Settings, load_project_env
 
 
 def cmd_ingest(args: argparse.Namespace) -> int:
@@ -132,7 +115,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    _load_dotenv()
+    load_project_env()
     parser = argparse.ArgumentParser(
         prog="factlayer",
         description="Extract grounded facts from PDFs and reconcile them across documents.",
